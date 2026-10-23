@@ -90,6 +90,16 @@ def published_releases():
     raise RuntimeError("Too many releases; refusing incomplete retention cleanup")
 
 
+def release_record(tag):
+    # Drafts do not have a tag ref yet, and GitHub's /releases/tags endpoint can return 404.
+    for page in range(1, 101):
+        records = gh("api", f"repos/{REPOSITORY}/releases?per_page=100&page={page}", json_output=True)
+        match = next((r for r in records if r["tag_name"] == tag), None)
+        if match is not None:return match
+        if len(records) < 100:break
+    raise ValueError("Release was not found")
+
+
 def download_manifest(tag, directory):
     target = Path(directory) / tag
     target.mkdir(parents=True, exist_ok=True)

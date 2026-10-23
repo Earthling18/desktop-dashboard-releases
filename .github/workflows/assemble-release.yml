@@ -1,0 +1,31 @@
+name: Assemble Desktop Dashboard release
+run-name: Dashboard assemble v${{ inputs.version }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Unpublished Desktop Dashboard version
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: desktop-dashboard-release-assembly
+  cancel-in-progress: false
+jobs:
+  assemble:
+    if: github.repository == 'Earthling18/desktop-dashboard-releases'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify the transfer and retention helpers
+        run: python -m unittest discover -s tests -p test_release_support.py -v
+      - name: Assemble, verify and remove temporary upload parts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DASHBOARD_VERSION: ${{ inputs.version }}
+        run: python scripts/upload_transport.py --assemble "$DASHBOARD_VERSION"

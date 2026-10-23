@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from release_support import (GITHUB_BASE, OSS_BASE, OSS_PREFIX, keep_releases,
                              obsolete_objects, validate_release, verify_package, version_key)
+from upload_transport import assemble_parts
 
 
 def release(version):
@@ -21,6 +22,19 @@ def release(version):
 
 
 class RetentionTests(unittest.TestCase):
+    def test_transfer_assembly_verifies_order_and_final_digest(self):
+        with tempfile.TemporaryDirectory() as folder:
+            value = release("0.2.0");parts = []
+            for number, content in enumerate([b"fix", b"ture"]):
+                name = f"upload-{number:04d}.part";(Path(folder) / name).write_bytes(content)
+                parts.append({"file": name, "size": len(content), "sha256": hashlib.sha256(content).hexdigest()})
+            index = {"schemaVersion": 1, "version": value["version"], **{k:value["windowsX64"][k] for k in ["file", "size", "sha256"]}, "parts": parts}
+            self.assertEqual(assemble_parts(index, folder, value).read_bytes(), b"fixture")
+            (Path(folder) / parts[0]["file"]).write_bytes(b"BAD")
+            with self.assertRaises(ValueError):assemble_parts(index, folder, value)
+            parts[0]["file"] = "../escape.part"
+            with self.assertRaises(ValueError):assemble_parts(index, folder, value)
+
     def test_keeps_three_by_semantic_version(self):
         selected = keep_releases([release(v) for v in ["1.9.0", "1.10.0", "1.8.0", "2.0.0", "0.9.0"]])
         self.assertEqual([r["version"] for r in selected], ["2.0.0", "1.10.0", "1.9.0"])
