@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 REPOSITORY = "Earthling18/desktop-dashboard-releases"
@@ -68,13 +69,17 @@ def obsolete_objects(keys, kept_versions):
 
 def gh(*arguments, json_output=False):
     environment = os.environ.copy()
-    # Large release uploads can be reset by HTTP/2 proxies; HTTP/1.1 is supported by GitHub.
-    if arguments[:2] == ("release", "upload"):
-        environment["GODEBUG"] = (environment.get("GODEBUG", "") + ",http2client=0").lstrip(",")
-    process = subprocess.run(["gh", *arguments], text=True, encoding="utf-8", capture_output=True, env=environment)
-    if process.returncode:
-        raise RuntimeError(process.stderr.strip() or "GitHub operation failed")
-    return json.loads(process.stdout) if json_output else process.stdout
+    # HTTP/1.1 and bounded retries tolerate intermittent proxy resets.
+    environment["GODEBUG"] = (environment.get("GODEBUG", "") + ",http2client=0").lstrip(",")
+    retryable = arguments[0] in {"api", "run"} and not any(v in arguments for v in ["--method", "-X"]) or arguments[:2] in {("release", "download"), ("release", "upload")}
+    for attempt in range(4):
+        process = subprocess.run(["gh", *arguments], text=True, encoding="utf-8", capture_output=True, env=environment)
+        if not process.returncode:
+            return json.loads(process.stdout) if json_output else process.stdout
+        error = process.stderr.strip() or "GitHub operation failed"
+        if not retryable or attempt == 3 or not any(value in error.lower() for value in ["eof", "timeout", "connection reset", "tls handshake", "temporary failure"]):
+            raise RuntimeError(error)
+        time.sleep(2 * (attempt + 1))
 
 
 def published_releases():
