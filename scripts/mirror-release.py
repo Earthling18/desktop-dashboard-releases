@@ -70,8 +70,20 @@ def mirror(version, apply):
         for start in range(0, len(obsolete), 1000):
             bucket.batch_delete_objects(obsolete[start:start + 1000])
         remaining = [obj.key for obj in oss2.ObjectIteratorV2(bucket, prefix=OSS_PREFIX)]
-        if obsolete_objects(remaining, kept_versions):
-            raise ValueError("OSS retention cleanup was incomplete")
+        # A successful batch response may still leave individual keys behind.
+        # Retry only the already verified, obsolete objects in our namespace;
+        # single-object requests surface a concrete service error if deletion
+        # was denied instead of silently accepting a partial batch result.
+        for attempt in range(3):
+            pending = obsolete_objects(remaining, kept_versions)
+            if not pending:
+                break
+            for key in pending:
+                bucket.delete_object(key)
+            remaining = [obj.key for obj in oss2.ObjectIteratorV2(bucket, prefix=OSS_PREFIX)]
+        pending = obsolete_objects(remaining, kept_versions)
+        if pending:
+            raise ValueError("OSS retention cleanup was incomplete: " + json.dumps(pending))
         print(json.dumps({"verified": True, "kept": sorted(kept_versions, key=version_key, reverse=True), "removedObjects": len(obsolete), "prefix": OSS_PREFIX}))
 
 

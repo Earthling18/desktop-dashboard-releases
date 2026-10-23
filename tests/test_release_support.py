@@ -76,7 +76,10 @@ class RetentionTests(unittest.TestCase):
     def test_mirror_keeps_old_packages_if_public_verification_fails(self):
         self.run_mirror_fixture(True)
 
-    def run_mirror_fixture(self, fail_verification):
+    def test_mirror_retries_a_partial_batch_with_single_object_deletion(self):
+        self.run_mirror_fixture(False, partial_batch=True)
+
+    def run_mirror_fixture(self, fail_verification, partial_batch=False):
         spec = importlib.util.spec_from_file_location("mirror_release", Path(__file__).resolve().parents[1] / "scripts" / "mirror-release.py")
         module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         versions = ["0.4.0", "0.3.0", "0.2.0"]
@@ -86,7 +89,10 @@ class RetentionTests(unittest.TestCase):
             def head_object(self, key):return SimpleNamespace(headers={"Content-Length": "7", "x-oss-meta-sha256": releases[0]["windowsX64"]["sha256"]})
             def put_object(self, key, value, headers):state["puts"][key] = value;state["events"].append("put:" + key)
             def batch_delete_objects(self, keys):
+                if partial_batch:return
                 state["events"].append("delete");state["deleted"].extend(keys);state["keys"] = [k for k in state["keys"] if k not in keys]
+            def delete_object(self, key):
+                state["events"].append("delete");state["deleted"].append(key);state["keys"] = [k for k in state["keys"] if k != key]
         bucket = Bucket()
         fake = SimpleNamespace(Auth=lambda *_: None, Bucket=lambda *_args, **_kwargs: bucket, ObjectIteratorV2=lambda *_args, **_kwargs: [SimpleNamespace(key=k) for k in state["keys"]])
         class Response:
