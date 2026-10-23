@@ -52,14 +52,14 @@ def mirror(version, apply):
                 gh("release", "download", "v" + release["version"], "--repo", REPOSITORY, "--pattern", package["file"], "--dir", str(directory), "--clobber")
                 path = directory / package["file"]
                 verify_package(path, release)
-                bucket.put_object_from_file(key, str(path), headers={"Content-Type": "application/zip", "Content-Disposition": f'attachment; filename="{package["file"]}"', "Cache-Control": "public,max-age=31536000,immutable", "x-oss-meta-sha256": package["sha256"]})
-            bucket.put_object(version_prefix + "release.json", encoded(release), headers={"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache"})
-            bucket.put_object(version_prefix + "SHA256SUMS.txt", (package["sha256"] + "  " + package["file"] + "\n").encode("ascii"), headers={"Content-Type": "text/plain"})
+                bucket.put_object_from_file(key, str(path), headers={"Content-Type": "application/zip", "Content-Disposition": f'attachment; filename="{package["file"]}"', "Cache-Control": "public,max-age=31536000,immutable", "x-oss-meta-sha256": package["sha256"], "x-oss-object-acl": "public-read"})
+            bucket.put_object(version_prefix + "release.json", encoded(release), headers={"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache", "x-oss-object-acl": "public-read"})
+            bucket.put_object(version_prefix + "SHA256SUMS.txt", (package["sha256"] + "  " + package["file"] + "\n").encode("ascii"), headers={"Content-Type": "text/plain", "x-oss-object-acl": "public-read"})
             with urllib.request.urlopen(urllib.request.Request(package["aliyun"], method="HEAD"), timeout=30) as response:
                 if int(response.headers["Content-Length"]) != package["size"]:
                     raise ValueError("Public mirror package verification failed")
         catalog = {"schemaVersion": 1, "releases": releases}
-        headers = {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache,max-age=0,must-revalidate"}
+        headers = {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache,max-age=0,must-revalidate", "x-oss-object-acl": "public-read"}
         bucket.put_object(OSS_PREFIX + "releases.json", encoded(catalog), headers=headers)
         bucket.put_object(OSS_PREFIX + "latest.json", encoded(releases[0]), headers=headers)
         if public_json("releases.json") != catalog or public_json("latest.json") != releases[0]:
