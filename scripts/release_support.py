@@ -1,6 +1,7 @@
 """Shared release validation and retention policy. Never handles application user data."""
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -66,7 +67,11 @@ def obsolete_objects(keys, kept_versions):
 
 
 def gh(*arguments, json_output=False):
-    process = subprocess.run(["gh", *arguments], text=True, encoding="utf-8", capture_output=True)
+    environment = os.environ.copy()
+    # Large release uploads can be reset by HTTP/2 proxies; HTTP/1.1 is supported by GitHub.
+    if arguments[:2] == ("release", "upload"):
+        environment["GODEBUG"] = (environment.get("GODEBUG", "") + ",http2client=0").lstrip(",")
+    process = subprocess.run(["gh", *arguments], text=True, encoding="utf-8", capture_output=True, env=environment)
     if process.returncode:
         raise RuntimeError(process.stderr.strip() or "GitHub operation failed")
     return json.loads(process.stdout) if json_output else process.stdout
